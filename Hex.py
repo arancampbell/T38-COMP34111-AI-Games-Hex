@@ -74,11 +74,11 @@ if __name__ == "__main__":
     p2 = importlib.import_module(p2_path)
     g = Game(
         player1=Player(
-            name=args.player1Name,
+            name=args.player1Name + f" ({p1_class})",
             agent=getattr(p1, p1_class)(Colour.RED),
         ),
         player2=Player(
-            name=args.player2Name,
+            name=args.player2Name + f" ({p2_class})",
             agent=getattr(p2, p2_class)(Colour.BLUE),
         ),
         board_size=args.board_size,
