@@ -253,8 +253,8 @@ class Game:
                 raise Exception("Game ended abnormally")
 
         for p in self.players.values():
-            print(f"{p.name},{p.move_time}", file=self.logDest)
-        print(f"winner,{winner},{status.name}", file=self.logDest)
+            print(f"Player: {p.name}, Move time: {p.move_time}", file=self.logDest)
+        print(f"winner: {winner}, {status.name}", file=self.logDest)
         logger.info(f"Total Game Time: {Game.ns_to_s(total_time)}s")
 
         return format_result(
