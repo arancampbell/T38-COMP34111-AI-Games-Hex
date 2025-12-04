@@ -16,7 +16,6 @@ class Node:
         self.children = {}
         self.wins = 0.0
         self.visits = 0
-        # RAVE (AMAF) Statistics
         self.amaf_wins = 0.0
         self.amaf_visits = 0
         self.untried_moves = None
@@ -27,11 +26,14 @@ class My3rdAgent(AgentBase):
     def __init__(self, colour: Colour):
         super().__init__(colour)
         self.root = None
-        self.time_limit = 9.0
         self.size = 11
         self.total_tiles = 121
 
-        # --- Precompute Neighbors (1D Graph) ---
+        # Track Time Internally
+        self.total_time_used = 0.0
+        self.GAME_TIME_LIMIT = 175.0  # TODO: I MUST CHANGE THIS BACK TO 295 (5 MIN) 180s limit - 5s buffer
+
+        # --- Precompute Neighbors ---
         self.neighbors = [[] for _ in range(self.total_tiles)]
         self.red_starts = []
         self.blue_starts = []
@@ -52,10 +54,39 @@ class My3rdAgent(AgentBase):
                         n_idx = nx * self.size + ny
                         self.neighbors[idx].append(n_idx)
 
+    def get_time_budget(self, board):
+        """Calculates dynamic time limit for the current turn."""
+        remaining_time = self.GAME_TIME_LIMIT - self.total_time_used
+
+        # Count empty tiles to estimate remaining turns
+        empty_tiles = 0
+        for r in range(self.size):
+            for c in range(self.size):
+                if board.tiles[r][c].colour is None:
+                    empty_tiles += 1
+
+        # I make 1 move for every 2 tiles removed (roughly)
+        my_remaining_turns = max(1, empty_tiles / 2.0)
+
+        # Basic Budget: Time / Moves
+        budget = remaining_time / my_remaining_turns
+
+        # Heuristic: Cap at 6s (diminishing returns), Min 0.2s
+        # Boost budget slightly in mid-game (moves 10-40) implicitly
+        # because denominator is smaller than start.
+        budget = min(budget, 6.0)
+        budget = max(budget, 0.2)
+
+        # Panic mode: If time is critically low, use nearly nothing
+        if remaining_time < 2.0:
+            budget = 0.1
+
+        return budget
+
     def make_move(self, turn, board, opp_move):
-        # 1. DISABLE TREE REUSE
-        # Clearing the tree forces the agent to re-evaluate the board based on
-        # the ACTUAL current threat, not what it thought 10 turns ago.
+        move_start_time = time.time()
+
+        # 1. Reset Tree (Vital for Smart Sim accuracy)
         self.root = None
 
         if self.root is None:
@@ -63,22 +94,26 @@ class My3rdAgent(AgentBase):
             self.root.untried_moves = self.get_legal_moves_as_tuples(board)
             self.root.player_just_moved = Colour.opposite(self.colour)
 
-        # 2. Defensive Solver (Instant Win/Loss check)
+        # 2. Heuristic Time Management
+        time_limit = self.get_time_budget(board)
+
+        # 3. Defensive Solver
         board_1d = self.board_to_1d(board)
         legal_indices = [i for i, v in enumerate(board_1d) if v == 0]
 
         my_val = 1 if self.colour == Colour.RED else 2
         opp_val = 3 - my_val
 
-        # Check instant win
+        # Instant Win
         for idx in legal_indices:
             board_1d[idx] = my_val
             if self.check_winner_1d(board_1d) == my_val:
+                self.update_time(move_start_time)  # Update time before returning!
                 r, c = divmod(idx, self.size)
                 return Move(r, c)
             board_1d[idx] = 0
 
-        # Check instant loss (Must block)
+        # Instant Loss Block
         must_block_indices = []
         for idx in legal_indices:
             board_1d[idx] = opp_val
@@ -87,25 +122,22 @@ class My3rdAgent(AgentBase):
             board_1d[idx] = 0
 
         if must_block_indices:
-            print(f"Solver: Found {len(must_block_indices)} critical threats. Focusing search.")
+            # print(f"Solver: Found {len(must_block_indices)} critical threats.")
             target_moves = set((idx // self.size, idx % self.size) for idx in must_block_indices)
             self.root.untried_moves = [m for m in self.root.untried_moves if m in target_moves]
 
-        # 3. RAVE MCTS Loop
-        start_time = time.time()
+        # 4. RAVE MCTS Loop
         iterations = 0
         my_colour_code = 1 if self.colour == Colour.RED else 2
 
-        # Get the index of the opponent's last move for the simulation heuristic
         last_opp_idx = -1
         if opp_move and not opp_move.is_swap():
             last_opp_idx = opp_move.x * self.size + opp_move.y
 
-        while (time.time() - start_time) < self.time_limit:
+        while (time.time() - move_start_time) < time_limit:
             sim_board = board_1d[:]
             node = self.root
             current_player_code = my_colour_code
-
             moves_in_tree = set()
 
             # --- SELECTION ---
@@ -118,6 +150,7 @@ class My3rdAgent(AgentBase):
                 current_player_code = 3 - current_player_code
 
             # --- EXPANSION ---
+            last_node_idx = last_opp_idx
             if node.untried_moves:
                 idx_in_list = random.randrange(len(node.untried_moves))
                 move_tuple = node.untried_moves[idx_in_list]
@@ -126,9 +159,7 @@ class My3rdAgent(AgentBase):
 
                 mx, my = move_tuple
                 idx = mx * self.size + my
-
-                val = 1 if current_player_code == 1 else 2
-                sim_board[idx] = val
+                sim_board[idx] = 1 if current_player_code == 1 else 2
 
                 child = Node(move_tuple, parent=node)
                 child.untried_moves = node.untried_moves[:]
@@ -138,14 +169,9 @@ class My3rdAgent(AgentBase):
                 node = child
                 moves_in_tree.add(move_tuple)
                 current_player_code = 3 - current_player_code
-
-                # Update last move for simulation
                 last_node_idx = idx
-            else:
-                last_node_idx = last_opp_idx
 
-            # --- SIMULATION (Heuristic) ---
-            # We pass the last move index to play locally
+            # --- SIMULATION (Smart) ---
             winner_code, moves_in_sim = self.run_simulation_smart(sim_board, current_player_code, last_node_idx)
 
             # --- BACKPROPAGATION ---
@@ -162,27 +188,29 @@ class My3rdAgent(AgentBase):
                         child.amaf_visits += 1
                         if child.player_just_moved == winner_colour:
                             child.amaf_wins += 1
-
                 node = node.parent
-
             iterations += 1
 
-        # 4. Final Selection
+        # 5. Final Selection
         if not self.root.children:
+            self.update_time(move_start_time)
             return self.safe_fallback_move(board)
 
-        # Robust Child Selection
         best_move_tuple = max(self.root.children, key=lambda k: self.root.children[k].visits)
         best_node = self.root.children[best_move_tuple]
 
         win_rate = best_node.wins / best_node.visits if best_node.visits > 0 else 0.0
-        print(f"Smart-RAVE MCTS: {iterations} iter, Rate: {win_rate:.2f}")
+        print(f"\n-------Smart-RAVE: {iterations} iterations ({time_limit:.2f}s), Win rate: {win_rate:.2f}\n")
+
+        self.update_time(move_start_time)
         return Move(best_move_tuple[0], best_move_tuple[1])
 
-    # --- RAVE HELPERS ---
+    def update_time(self, start_time):
+        self.total_time_used += (time.time() - start_time)
+
+    # --- HELPERS ---
 
     def best_child_rave(self, node):
-        # Lower 'k' trusts the tree stats sooner (less hallucination)
         k = 50
         best_score = -float('inf')
         best_moves = []
@@ -200,12 +228,8 @@ class My3rdAgent(AgentBase):
             else:
                 amaf_score = 0.5
 
-            if child.visits > 0:
-                explore = 0.4 * math.sqrt(math.log(node.visits) / child.visits)
-            else:
-                explore = 1.0
-
-            score = (1 - beta) * uct_score + beta * amaf_score + explore
+            score = (1 - beta) * uct_score + beta * amaf_score + (
+                        0.4 * math.sqrt(math.log(node.visits) / (child.visits + 1)))
 
             if score > best_score:
                 best_score = score
@@ -216,42 +240,26 @@ class My3rdAgent(AgentBase):
         return random.choice(best_moves)
 
     def run_simulation_smart(self, board, turn_code, last_idx):
-        """
-        Smart Simulation: Tries to play a neighbor of the last move
-        with 50% probability. This simulates local fights/walls.
-        """
         empty_indices = [i for i, x in enumerate(board) if x == 0]
-        # Optimize: Map indices for O(1) removal?
-        # For Python, shuffle is still fastest, but we will tweak the ORDER.
 
-        # If we have a last move, swap a neighbor to the front
+        # Local Response Heuristic (50% chance to play near last move)
         if last_idx != -1 and 0 <= last_idx < 121:
-            # Pick a random neighbor of the last move
-            potential_neighbors = self.neighbors[last_idx]
-            # Try to find an empty neighbor
-            for n_idx in potential_neighbors:
+            for n_idx in self.neighbors[last_idx]:
                 if board[n_idx] == 0:
-                    # Move this neighbor to the front of empty_indices logic?
-                    # Since empty_indices is a list, finding n_idx is O(N).
-                    # This is too slow.
-                    # Instead, we just PLAY it immediately if valid.
                     board[n_idx] = turn_code
-                    # Remove from empty_indices (slow) or just proceed.
-                    # To keep it fast:
-                    # We just play random moves, but we can't easily do the heuristic
-                    # without slowing down the iterations.
-
-                    # Compromise: Pure Random is actually better IF tree is reset.
+                    # We played one move, now resume random
+                    # To accurately reflect the board state we must remove this n_idx from empty_indices
+                    # But checking O(N) is slow.
+                    # Fast Hack: We just continue. If random picks this index later, it checks != 0.
+                    turn_code = 3 - turn_code
                     break
 
-        # Standard Shuffle (Fastest in Python)
         random.shuffle(empty_indices)
-
         current = turn_code
         moves_in_sim = set()
 
         for idx in empty_indices:
-            if board[idx] == 0:  # Check if not filled by heuristic above
+            if board[idx] == 0:
                 board[idx] = current
                 r, c = divmod(idx, self.size)
                 moves_in_sim.add((r, c))
@@ -260,7 +268,7 @@ class My3rdAgent(AgentBase):
         return self.check_winner_1d(board), moves_in_sim
 
     def check_winner_1d(self, board):
-        # Optimized DFS
+        # RED
         stack = [i for i in self.red_starts if board[i] == 1]
         visited = [False] * 121
         for i in stack: visited[i] = True
@@ -271,7 +279,7 @@ class My3rdAgent(AgentBase):
                 if board[n_idx] == 1 and not visited[n_idx]:
                     visited[n_idx] = True
                     stack.append(n_idx)
-
+        # BLUE
         stack = [i for i in self.blue_starts if board[i] == 2]
         visited = [False] * 121
         for i in stack: visited[i] = True
