@@ -29,11 +29,10 @@ class My3rdAgent(AgentBase):
         self.size = 11
         self.total_tiles = 121
 
-        # Track Time Internally
         self.total_time_used = 0.0
         self.GAME_TIME_LIMIT = 175.0  # TODO: I MUST CHANGE THIS BACK TO 295 (5 MIN) 180s limit - 5s buffer
 
-        # --- Precompute Neighbors ---
+        # precalculate neighbours
         self.neighbors = [[] for _ in range(self.total_tiles)]
         self.red_starts = []
         self.blue_starts = []
@@ -55,29 +54,19 @@ class My3rdAgent(AgentBase):
                         self.neighbors[idx].append(n_idx)
 
     def get_time_budget(self, board):
-        """Calculates dynamic time limit for the current turn."""
         remaining_time = self.GAME_TIME_LIMIT - self.total_time_used
 
-        # Count empty tiles to estimate remaining turns
+        # estimate remaining turns by counting empty tiles
         empty_tiles = 0
         for r in range(self.size):
             for c in range(self.size):
                 if board.tiles[r][c].colour is None:
                     empty_tiles += 1
 
-        # I make 1 move for every 2 tiles removed (roughly)
         my_remaining_turns = max(1, empty_tiles / 2.0)
 
-        # Basic Budget: Time / Moves
-        budget = remaining_time / my_remaining_turns
+        budget = max(min(remaining_time / my_remaining_turns, 6.0), 0.2)
 
-        # Heuristic: Cap at 6s (diminishing returns), Min 0.2s
-        # Boost budget slightly in mid-game (moves 10-40) implicitly
-        # because denominator is smaller than start.
-        budget = min(budget, 6.0)
-        budget = max(budget, 0.2)
-
-        # Panic mode: If time is critically low, use nearly nothing
         if remaining_time < 2.0:
             budget = 0.1
 
@@ -86,7 +75,6 @@ class My3rdAgent(AgentBase):
     def make_move(self, turn, board, opp_move):
         move_start_time = time.time()
 
-        # 1. Reset Tree (Vital for Smart Sim accuracy)
         self.root = None
 
         if self.root is None:
@@ -94,26 +82,24 @@ class My3rdAgent(AgentBase):
             self.root.untried_moves = self.get_legal_moves_as_tuples(board)
             self.root.player_just_moved = Colour.opposite(self.colour)
 
-        # 2. Heuristic Time Management
         time_limit = self.get_time_budget(board)
 
-        # 3. Defensive Solver
         board_1d = self.board_to_1d(board)
         legal_indices = [i for i, v in enumerate(board_1d) if v == 0]
 
         my_val = 1 if self.colour == Colour.RED else 2
         opp_val = 3 - my_val
 
-        # Instant Win
+        # instant win
         for idx in legal_indices:
             board_1d[idx] = my_val
             if self.check_winner_1d(board_1d) == my_val:
-                self.update_time(move_start_time)  # Update time before returning!
+                self.update_time(move_start_time)
                 r, c = divmod(idx, self.size)
                 return Move(r, c)
             board_1d[idx] = 0
 
-        # Instant Loss Block
+        # block an instant loss
         must_block_indices = []
         for idx in legal_indices:
             board_1d[idx] = opp_val
@@ -122,11 +108,11 @@ class My3rdAgent(AgentBase):
             board_1d[idx] = 0
 
         if must_block_indices:
-            # print(f"Solver: Found {len(must_block_indices)} critical threats.")
+            # print(f"found {len(must_block_indices)} critical threats.")
             target_moves = set((idx // self.size, idx % self.size) for idx in must_block_indices)
             self.root.untried_moves = [m for m in self.root.untried_moves if m in target_moves]
 
-        # 4. RAVE MCTS Loop
+        # rapid action value estimation mcts loop
         iterations = 0
         my_colour_code = 1 if self.colour == Colour.RED else 2
 
@@ -171,7 +157,7 @@ class My3rdAgent(AgentBase):
                 current_player_code = 3 - current_player_code
                 last_node_idx = idx
 
-            # --- SIMULATION (Smart) ---
+            # --- SIMULATION ---
             winner_code, moves_in_sim = self.run_simulation_smart(sim_board, current_player_code, last_node_idx)
 
             # --- BACKPROPAGATION ---
@@ -191,7 +177,6 @@ class My3rdAgent(AgentBase):
                 node = node.parent
             iterations += 1
 
-        # 5. Final Selection
         if not self.root.children:
             self.update_time(move_start_time)
             return self.safe_fallback_move(board)
@@ -200,15 +185,13 @@ class My3rdAgent(AgentBase):
         best_node = self.root.children[best_move_tuple]
 
         win_rate = best_node.wins / best_node.visits if best_node.visits > 0 else 0.0
-        print(f"\n-------Smart-RAVE: {iterations} iterations ({time_limit:.2f}s), Win rate: {win_rate:.2f}\n")
 
         self.update_time(move_start_time)
+        print(f"\n-------Smart(er)-RAVE: {iterations} iterations ({time_limit:.2f}s/{self.total_time_used:.2f}s), Win rate: {win_rate:.2f}-------\n")
         return Move(best_move_tuple[0], best_move_tuple[1])
 
     def update_time(self, start_time):
         self.total_time_used += (time.time() - start_time)
-
-    # --- HELPERS ---
 
     def best_child_rave(self, node):
         k = 50
