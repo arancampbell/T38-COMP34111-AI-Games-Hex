@@ -22,7 +22,7 @@ class Node:
         self.player_just_moved = None
 
 
-class My3rdAgent(AgentBase):
+class BestAgent(AgentBase):
     def __init__(self, colour: Colour):
         super().__init__(colour)
         self.root = None
