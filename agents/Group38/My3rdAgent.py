@@ -48,6 +48,7 @@ class My3rdAgent(AgentBase):
                     (x, y - 1), (x, y + 1),
                     (x + 1, y - 1), (x + 1, y)
                 ]
+
                 for nx, ny in potential:
                     if 0 <= nx < self.size and 0 <= ny < self.size:
                         n_idx = nx * self.size + ny
