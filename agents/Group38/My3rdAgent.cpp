@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -206,19 +207,36 @@ public:
         // 5. FINAL SELECTION
         Move best_move(-1, -1);
         int max_visits = -1;
+        double win_rate = 0.0;
 
         if (root->children.empty()) {
             best_move = safe_fallback(board);
         } else {
+            Node* best_node = nullptr;
             for (Node* child : root->children) {
                 if (child->visits > max_visits) {
                     max_visits = child->visits;
                     best_move = idx_to_move(child->move_idx);
+                    best_node = child;
                 }
+            }
+            // Calculate win rate for the log
+            if (best_node != nullptr && best_node->visits > 0) {
+                win_rate = (double)best_node->wins / best_node->visits;
             }
         }
 
-        update_time(start_time);
+        // Calculate timing
+        double current_move_time = get_elapsed(start_time);
+        update_time(start_time); // updates total_time_used
+
+        // --- PRINT STATS TO STDERR ---
+        std::cerr << "\n-------C++ Agent: "
+                  << iterations << " iterations ("
+                  << std::fixed << std::setprecision(2) << current_move_time << "s/"
+                  << total_time_used << "s), Win rate: "
+                  << win_rate << "-------\n" << std::endl;
+
         delete root; // Clean up memory
         return best_move;
     }

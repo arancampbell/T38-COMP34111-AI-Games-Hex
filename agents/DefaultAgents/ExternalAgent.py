@@ -48,8 +48,9 @@ class ExternalAgent(AgentBase):
         #     stdin=PIPE,
         #     text=True,
         # )
+        print(f"Initializing ExternalAgent with colour: {colour}")
         self.agent_process = Popen(
-            ["agents/Group38/My3rdAgent", colour.get_char(), "11"],
+            ["agents/Group38/My3rdAgent", colour.get_char(colour), "11"],
             stdout=PIPE,
             stdin=PIPE,
             text=True,
@@ -80,7 +81,10 @@ class ExternalAgent(AgentBase):
                 if colour is None:
                     t = "0"
                 else:
-                    t = colour.get_char()
+                    if colour == Colour.RED:
+                        t = "R"
+                    else:
+                        t = "B"
                 row_string += t
             board_strings.append(row_string)
         board_string = ",".join(board_strings)
