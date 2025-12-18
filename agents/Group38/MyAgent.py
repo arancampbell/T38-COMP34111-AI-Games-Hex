@@ -26,7 +26,7 @@ class Node:
 
 
 class MyAgent(AgentBase):
-    def __init__(self, colour: Colour):
+    def __init__(self, colour: Colour, total_time_limit: int = 175.0):
         super().__init__(colour)
         self.root = None
         self.time_limit = 9.0

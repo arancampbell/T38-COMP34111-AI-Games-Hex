@@ -17,7 +17,7 @@ class Colour(Enum):
     BLUE = 1
 
     @staticmethod
-    def get_char(colour):
+    def get_char(colour = None):
         """Returns a coloured single-character representation."""
 
         if colour == Colour.RED:

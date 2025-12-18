@@ -23,19 +23,20 @@ class Node:
 
 
 class BestAgent(AgentBase):
-    def __init__(self, colour: Colour):
+    def __init__(self, colour: Colour, total_time_limit: int = 175.0):
         super().__init__(colour)
         self.root = None
         self.size = 11
         self.total_tiles = 121
 
         self.total_time_used = 0.0
-        self.GAME_TIME_LIMIT = 175.0  # TODO: I MUST CHANGE THIS BACK TO 295 (5 MIN) 180s limit - 5s buffer
+        self.GAME_TIME_LIMIT = total_time_limit  # TODO: I MUST CHANGE THIS BACK TO 295 (5 MIN) 180s limit - 5s buffer
 
         # precalculate neighbours
         self.neighbors = [[] for _ in range(self.total_tiles)]
         self.red_starts = []
         self.blue_starts = []
+        self.last_win_rate = 0
 
         for x in range(self.size):
             for y in range(self.size):
@@ -188,7 +189,8 @@ class BestAgent(AgentBase):
         win_rate = best_node.wins / best_node.visits if best_node.visits > 0 else 0.0
 
         self.update_time(move_start_time)
-        print(f"\n-------Smart(er)-RAVE: {iterations} iterations ({time_limit:.2f}s/{self.total_time_used:.2f}s), Win rate: {win_rate:.2f}-------\n")
+        print(f"\n-------Best-Agent: {iterations} iterations ({time_limit:.2f}s/{self.total_time_used:.2f}s), Win rate: {win_rate:.2f}-------\n")
+        self.last_win_rate = win_rate
         return Move(best_move_tuple[0], best_move_tuple[1])
 
     def update_time(self, start_time):
