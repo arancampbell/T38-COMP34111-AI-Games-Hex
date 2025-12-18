@@ -183,10 +183,10 @@ if __name__ == "__main__":
     # Format: (FilePath (dot notation), ClassName, DisplayName)
 
     # Example: My Optimized Agent
-    AGENT_A = ("agents.Group38.BestAgent", "BestAgent", "BestAgent")
+    AGENT_A = ("agents.DefaultAgents.ExternalAgent", "ExternalAgent", "old_C_agent")
 
     # Example: The "Non-Optimized" Agent
-    AGENT_B = ("agents.Group38.My2ndAgent", "My2ndAgent", "My2ndAgent")
+    AGENT_B = ("agents.DefaultAgents.ExternalAgentNew", "ExternalAgentNew", "new_C_agent")
 
     # Run
     results = run_tournament(AGENT_A, AGENT_B)

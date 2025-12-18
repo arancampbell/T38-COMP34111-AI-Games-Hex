@@ -16,7 +16,7 @@ const int TOTAL_TILES = 121;
 const double RAVE_K = 50.0;
 const double EXPLORATION = 0.4;
 const double TIME_BUFFER = 0.5;
-const double TOTAL_GAME_TIME = 180.0; // 3 Minutes
+const double TOTAL_GAME_TIME = 300.0; // 5 Minutes
 
 enum Colour { RED = 1, BLUE = 2, EMPTY = 0 };
 
@@ -260,7 +260,7 @@ private:
         double turns_left = std::max(1.0, empty / 2.0);
         double budget = remaining / turns_left;
 
-        if (empty > 40 && empty < 100) budget = std::min(budget * 1.4, 7.0);
+        if (empty > 20 && empty < 80) budget = std::min(budget * 1.4, 7.0);
         else budget = std::min(budget, 4.0);
 
         return std::max(budget, 0.2);
